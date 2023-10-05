@@ -219,8 +219,8 @@ public final class NpmPayloadBuilder {
         payloadBuilder.add("install", Json.createArrayBuilder().build());
         payloadBuilder.add("remove", Json.createArrayBuilder().build());
         payloadBuilder.add("metadata", Json.createObjectBuilder()
-                .add("npm_version", "6.9.0")
-                .add("node_version", "v10.5.0")
+                .add("npm_version", "8.10.0")
+                .add("node_version", "v18.9.1")
                 .add("platform", "linux")
         );
     }
