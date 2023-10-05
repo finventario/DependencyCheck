@@ -154,6 +154,7 @@ public class NodeAuditSearch {
                 LOGGER.trace("----------------------------------------");
                 LOGGER.trace("----------------------------------------");
             }
+            LOGGER.trace(packageJson.toString())
             final byte[] packageDatabytes = packageJson.toString().getBytes(StandardCharsets.UTF_8);
             final URLConnectionFactory factory = new URLConnectionFactory(settings);
             final HttpURLConnection conn = factory.createHttpURLConnection(nodeAuditUrl, useProxy);
