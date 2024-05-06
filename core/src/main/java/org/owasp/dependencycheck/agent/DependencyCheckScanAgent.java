@@ -101,12 +101,17 @@ public class DependencyCheckScanAgent {
      * to 11. The valid range for the fail build on CVSS is 0 to 11, where
      * anything above 10 will not cause the build to fail.
      */
-    private float failBuildOnCVSS = 11;
+    private Double failBuildOnCVSS = 11.0;
     /**
      * Sets whether auto-updating of the NVD CVE/CPE data is enabled. It is not
      * recommended that this be turned to false. Default is true.
      */
     private boolean autoUpdate = true;
+    /**
+     * The NVD API key.
+     */
+    private String nvdApiKey;
+
     /**
      * Sets whether the data directory should be updated without performing a
      * scan. Default is false.
@@ -117,9 +122,10 @@ public class DependencyCheckScanAgent {
      */
     private boolean generateReport = true;
     /**
-     * The report format to be generated (HTML, XML, CSV, JSON, JUNIT, ALL).
-     * This configuration option has no affect if using this within the Site
-     * plugin unless the externalReport is set to true. Default is HTML.
+     * The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF,
+     * JENKINS, GITLAB, ALL). This configuration option has no affect if using
+     * this within the Site plugin unless the externalReport is set to true.
+     * Default is HTML.
      */
     private ReportGenerator.Format reportFormat = ReportGenerator.Format.HTML;
     /**
@@ -209,14 +215,6 @@ public class DependencyCheckScanAgent {
      */
     private String zipExtensions;
     /**
-     * The URL for the modified NVD CVE JSON.
-     */
-    private String cveUrlModified;
-    /**
-     * The base URL for the NVD CVE JSON data feeds.
-     */
-    private String cveUrlBase;
-    /**
      * The path to dotnet core for .NET assembly analysis.
      */
     private String pathToCore;
@@ -249,6 +247,24 @@ public class DependencyCheckScanAgent {
      */
     public void setApplicationName(String applicationName) {
         this.applicationName = applicationName;
+    }
+
+    /**
+     * Get the value of nvdApiKey.
+     *
+     * @return the value of nvdApiKey
+     */
+    public String getNvdApiKey() {
+        return nvdApiKey;
+    }
+
+    /**
+     * Set the value of nvdApiKey.
+     *
+     * @param nvdApiKey new value of nvdApiKey
+     */
+    public void setNvdApiKey(String nvdApiKey) {
+        this.nvdApiKey = nvdApiKey;
     }
 
     /**
@@ -310,7 +326,7 @@ public class DependencyCheckScanAgent {
      *
      * @return the value of failBuildOnCVSS
      */
-    public float getFailBuildOnCVSS() {
+    public Double getFailBuildOnCVSS() {
         return failBuildOnCVSS;
     }
 
@@ -319,7 +335,7 @@ public class DependencyCheckScanAgent {
      *
      * @param failBuildOnCVSS new value of failBuildOnCVSS
      */
-    public void setFailBuildOnCVSS(float failBuildOnCVSS) {
+    public void setFailBuildOnCVSS(Double failBuildOnCVSS) {
         this.failBuildOnCVSS = failBuildOnCVSS;
     }
 
@@ -802,42 +818,6 @@ public class DependencyCheckScanAgent {
     }
 
     /**
-     * Get the value of cveUrlModified.
-     *
-     * @return the value of cveUrlModified
-     */
-    public String getCveUrlModified() {
-        return cveUrlModified;
-    }
-
-    /**
-     * Set the value of cveUrlModified.
-     *
-     * @param cveUrlModified new value of cveUrlModified
-     */
-    public void setCveUrlModified(String cveUrlModified) {
-        this.cveUrlModified = cveUrlModified;
-    }
-
-    /**
-     * Get the value of cveUrlBase.
-     *
-     * @return the value of cveUrlBase
-     */
-    public String getCveUrlBase() {
-        return cveUrlBase;
-    }
-
-    /**
-     * Set the value of cveUrlBase.
-     *
-     * @param cveUrlBase new value of cveUrlBase
-     */
-    public void setCveUrlBase(String cveUrlBase) {
-        this.cveUrlBase = cveUrlBase;
-    }
-
-    /**
      * Get the value of pathToCore.
      *
      * @return the value of pathToCore
@@ -970,8 +950,7 @@ public class DependencyCheckScanAgent {
         settings.setStringIfNotEmpty(Settings.KEYS.DB_USER, databaseUser);
         settings.setStringIfNotEmpty(Settings.KEYS.DB_PASSWORD, databasePassword);
         settings.setStringIfNotEmpty(Settings.KEYS.ADDITIONAL_ZIP_EXTENSIONS, zipExtensions);
-        settings.setStringIfNotEmpty(Settings.KEYS.CVE_MODIFIED_JSON, cveUrlModified);
-        settings.setStringIfNotEmpty(Settings.KEYS.CVE_BASE_JSON, cveUrlBase);
+        settings.setStringIfNotEmpty(Settings.KEYS.NVD_API_KEY, nvdApiKey);
         settings.setStringIfNotEmpty(Settings.KEYS.ANALYZER_ASSEMBLY_DOTNET_PATH, pathToCore);
     }
 
@@ -993,7 +972,7 @@ public class DependencyCheckScanAgent {
                 if (this.showSummary) {
                     showSummary(engine.getDependencies());
                 }
-                if (this.failBuildOnCVSS <= 10) {
+                if (this.failBuildOnCVSS <= 10.0) {
                     checkForFailure(engine.getDependencies());
                 }
             }
@@ -1025,8 +1004,8 @@ public class DependencyCheckScanAgent {
         for (Dependency d : dependencies) {
             boolean addName = true;
             for (Vulnerability v : d.getVulnerabilities()) {
-                if ((v.getCvssV2() != null && v.getCvssV2().getScore() >= failBuildOnCVSS)
-                        || (v.getCvssV3() != null && v.getCvssV3().getBaseScore() >= failBuildOnCVSS)
+                if ((v.getCvssV2() != null && v.getCvssV2().getCvssData().getBaseScore() >= failBuildOnCVSS)
+                        || (v.getCvssV3() != null && v.getCvssV3().getCvssData().getBaseScore() >= failBuildOnCVSS)
                         || (v.getUnscoredSeverity() != null && SeverityUtil.estimateCvssV2(v.getUnscoredSeverity()) >= failBuildOnCVSS)
                         //safety net to fail on any if for some reason the above misses on 0
                         || (failBuildOnCVSS <= 0.0f)) {

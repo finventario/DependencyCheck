@@ -17,21 +17,16 @@
  */
 package org.owasp.dependencycheck.taskdefs;
 
+import io.github.jeremylong.jcs3.slf4j.Slf4jAdapter;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 
-import org.apache.commons.jcs.JCS;
-import org.apache.commons.jcs.access.CacheAccess;
-import org.apache.commons.jcs.engine.CompositeCacheAttributes;
-import org.apache.commons.jcs.engine.behavior.ICompositeCacheAttributes;
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.Task;
 import org.owasp.dependencycheck.Engine;
-import org.owasp.dependencycheck.data.cache.DataCache;
 import org.owasp.dependencycheck.utils.Settings;
-import org.owasp.dependencycheck.xml.pom.Model;
 import org.slf4j.impl.StaticLoggerBinder;
 
 /**
@@ -135,22 +130,42 @@ public class Purge extends Task {
     }
 
     /**
-     * Sets the {@link Thread#getContextClassLoader() Thread Context Class Loader} to the one for this class,
-     * and then calls {@link #executeWithContextClassloader()}. This is done because the JCS cache needs to have
-     * the Thread Context Class Loader set to something that can resolve it's classes. Other build tools do this
-     * by default but Ant does not.
+     * Sets the
+     * {@link Thread#getContextClassLoader() Thread Context Class Loader} to the
+     * one for this class, and then calls
+     * {@link #executeWithContextClassloader()}. This is done because the JCS
+     * cache needs to have the Thread Context Class Loader set to something that
+     * can resolve it's classes. Other build tools do this by default but Ant
+     * does not.
      *
-     * @throws BuildException throws if there is a problem. See {@link #executeWithContextClassloader()} for details
+     * @throws BuildException throws if there is a problem. See
+     * {@link #executeWithContextClassloader()} for details
      */
     @Override
     public final void execute() throws BuildException {
-        ClassLoader current = Thread.currentThread().getContextClassLoader();
+        muteNoisyLoggers();
+        final ClassLoader current = Thread.currentThread().getContextClassLoader();
         try {
             Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
 
             executeWithContextClassloader();
         } finally {
             Thread.currentThread().setContextClassLoader(current);
+        }
+    }
+
+    /**
+     * Hacky method of muting the noisy logging from JCS.
+     */
+    private void muteNoisyLoggers() {
+        System.setProperty("jcs.logSystem", "slf4j");
+        Slf4jAdapter.muteLogging(true);
+
+        final String[] noisyLoggers = {
+            "org.apache.hc"
+        };
+        for (String loggerName : noisyLoggers) {
+            System.setProperty("org.slf4j.simpleLogger.log." + loggerName, "error");
         }
     }
 

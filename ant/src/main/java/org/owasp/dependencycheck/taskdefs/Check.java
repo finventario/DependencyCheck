@@ -41,8 +41,8 @@ import org.owasp.dependencycheck.reporting.ReportGenerator.Format;
 import org.owasp.dependencycheck.utils.Settings;
 import org.owasp.dependencycheck.utils.SeverityUtil;
 import org.slf4j.impl.StaticLoggerBinder;
-//CSOFF: MethodCount
 
+//CSOFF: MethodCount
 /**
  * An Ant task definition to execute dependency-check during an Ant build.
  *
@@ -237,13 +237,13 @@ public class Check extends Update {
      */
     private Boolean autoUpdate;
     /**
-     * The report format to be generated (HTML, XML, JUNIT, CSV, JSON, SARIF,
-     * JENKINS, ALL). Default is HTML.
+     * The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF,
+     * JENKINS, GITLAB, ALL). Default is HTML.
      */
     private String reportFormat = "HTML";
     /**
-     * The report format to be generated (HTML, XML, JUNIT, CSV, JSON, SARIF,
-     * JENKINS, ALL). Default is HTML.
+     * The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF,
+     * JENKINS, GITLAB, ALL). Default is HTML.
      */
     private final List<String> reportFormats = new ArrayList<>();
     /**
@@ -356,6 +356,10 @@ public class Check extends Update {
      * Whether or not the CocoaPods Analyzer is enabled.
      */
     private Boolean cocoapodsAnalyzerEnabled;
+    /**
+     * Whether or not the Carthage Analyzer is enabled.
+     */
+    private Boolean carthageAnalyzerEnabled;
 
     /**
      * Whether or not the Swift package Analyzer is enabled.
@@ -882,7 +886,7 @@ public class Check extends Update {
      */
     public Boolean isNugetconfAnalyzerEnabled() {
         return nugetconfAnalyzerEnabled;
-    }    
+    }
 
     /**
      * Sets whether or not the analyzer is enabled.
@@ -1103,6 +1107,24 @@ public class Check extends Update {
      */
     public void setCocoapodsAnalyzerEnabled(Boolean cocoapodsAnalyzerEnabled) {
         this.cocoapodsAnalyzerEnabled = cocoapodsAnalyzerEnabled;
+    }
+
+    /**
+     * Returns if the Carthage analyzer is enabled.
+     *
+     * @return if the Carthage analyzer is enabled
+     */
+    public boolean isCarthageAnalyzerEnabled() {
+        return carthageAnalyzerEnabled;
+    }
+
+    /**
+     * Sets whether or not the Carthage analyzer is enabled.
+     *
+     * @param carthageAnalyzerEnabled the state of the Carthage analyzer
+     */
+    public void setCarthageAnalyzerEnabled(Boolean carthageAnalyzerEnabled) {
+        this.carthageAnalyzerEnabled = carthageAnalyzerEnabled;
     }
 
     /**
@@ -2144,6 +2166,7 @@ public class Check extends Update {
         getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_SWIFT_PACKAGE_MANAGER_ENABLED, swiftPackageManagerAnalyzerEnabled);
         getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_SWIFT_PACKAGE_RESOLVED_ENABLED, swiftPackageResolvedAnalyzerEnabled);
         getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_COCOAPODS_ENABLED, cocoapodsAnalyzerEnabled);
+        getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_CARTHAGE_ENABLED, carthageAnalyzerEnabled);
         getSettings().setBooleanIfNotNull(Settings.KEYS.ANALYZER_BUNDLE_AUDIT_ENABLED, bundleAuditAnalyzerEnabled);
         getSettings().setStringIfNotNull(Settings.KEYS.ANALYZER_BUNDLE_AUDIT_PATH, bundleAuditPath);
         getSettings().setStringIfNotNull(Settings.KEYS.ANALYZER_BUNDLE_AUDIT_WORKING_DIRECTORY, bundleAuditWorkingDirectory);
@@ -2217,8 +2240,8 @@ public class Check extends Update {
         for (Dependency d : dependencies) {
             boolean addName = true;
             for (Vulnerability v : d.getVulnerabilities()) {
-                if ((v.getCvssV2() != null && v.getCvssV2().getScore() >= failBuildOnCVSS)
-                        || (v.getCvssV3() != null && v.getCvssV3().getBaseScore() >= failBuildOnCVSS)
+                if ((v.getCvssV2() != null && v.getCvssV2().getCvssData().getBaseScore() >= failBuildOnCVSS)
+                        || (v.getCvssV3() != null && v.getCvssV3().getCvssData().getBaseScore() >= failBuildOnCVSS)
                         || (v.getUnscoredSeverity() != null && SeverityUtil.estimateCvssV2(v.getUnscoredSeverity()) >= failBuildOnCVSS)
                         //safety net to fail on any if for some reason the above misses on 0
                         || (failBuildOnCVSS <= 0.0f)) {

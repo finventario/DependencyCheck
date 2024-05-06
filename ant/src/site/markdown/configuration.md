@@ -33,19 +33,18 @@ The following properties can be set on the dependency-check task.
 Property              | Description                                                                                                                                                                                                    | Default Value
 ----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------
 autoUpdate            | Sets whether auto-updating of the NVD CVE/CPE data is enabled. It is not recommended that this be turned to false.                                                                                             | true
-cveValidForHours      | Sets the number of hours to wait before checking for new updates from the NVD                                                                                                                                  | 4
 failOnError           | Whether the build should fail if there is an error executing the dependency-check analysis                                                                                                                     | true
 failBuildOnCVSS       | Specifies if the build should be failed if a CVSS score equal to or above a specified level is identified. The default is 11 which means since the CVSS scores are 0-10, by default the build will never fail. More information on CVSS scores can be found at the [NVD](https://nvd.nist.gov/vuln-metrics/cvss)| 11
 junitFailOnCVSS       | If using the JUNIT report format the junitFailOnCVSS sets the CVSS score threshold that is considered a failure.                                                                                               | 0
 prettyPrint           | Whether the XML and JSON formatted reports should be pretty printed.                                                                                                                                           | false
 projectName           | The name of the project being scanned.                                                                                                                                                                         | Dependency-Check
-reportFormat          | The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF, ALL).                                                                                                                                          | HTML
+reportFormat          | The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF, JENKINS, GITLAB, ALL).                                                                                                                  | HTML
 reportOutputDirectory | The location to write the report(s). Note, this is not used if generating the report as part of a `mvn site` build                                                                                             | 'target'
 hintsFile             | The file path to the XML hints file \- used to resolve [false negatives](../general/hints.html)                                                                                                                | &nbsp;
 proxyServer           | The Proxy Server; see the [proxy configuration](../data/proxy.html) page for more information.                                                                                                                 | &nbsp;
 proxyPort             | The Proxy Port.                                                                                                                                                                                                | &nbsp;
 proxyUsername         | Defines the proxy user name.                                                                                                                                                                                   | &nbsp;
-proxyPassword         | Defines the proxy password.                                                                                                                                                                                    | &nbsp; 
+proxyPassword         | Defines the proxy password.                                                                                                                                                                                    | &nbsp;
 nonProxyHosts         | Defines the hosts that will not be proxied.                                                                                                                                                                    | &nbsp;
 connectionTimeout     | The URL Connection Timeout.                                                                                                                                                                                    | &nbsp;
 enableExperimental    | Enable the [experimental analyzers](../analyzers/index.html). If not enabled the experimental analyzers (see below) will not be loaded or used.                                                                | false
@@ -58,7 +57,7 @@ The following nested elements can be set on the dependency-check task.
 Element           | Property | Description                                                                                                                                                                                        | Default Value
 ------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------
 suppressionFile   | path     | The file path to the XML suppression file \- used to suppress [false positives](../general/suppression.html). Element can be specified multiple times. The parameter value can be a local file path, a URL to a suppression file, or even a reference to a file on the class path (see https://github.com/jeremylong/DependencyCheck/issues/1878#issuecomment-487533799) | &nbsp;| &nbsp;
-reportFormat      | format   | The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF, ALL). Element can be specified multiple times.                                                                                     | &nbsp;
+reportFormat      | format   | The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF, JENKINS, GITLAB, ALL). Element can be specified multiple times.                                                             | &nbsp;
 
 
 Analyzer Configuration
@@ -125,6 +124,7 @@ nuspecAnalyzerEnabled               | Sets whether the .NET Nuget Nuspec Analyze
 nugetconfAnalyzerEnabled            | Sets whether the [experimental](../analyzers/index.html) .NET Nuget packages.config Analyzer will be used. `enableExperimental` must be set to true. | true
 libmanAnalyzerEnabled               | Sets whether the Libman Analyzer will be used.                                                             | true
 cocoapodsAnalyzerEnabled            | Sets whether the [experimental](../analyzers/index.html) Cocoapods Analyzer should be used. `enableExperimental` must be set to true. | true
+carthageAnalyzerEnabled             | Sets whether the [experimental](../analyzers/index.html) Carthage Analyzer should be used. `enableExperimental` must be set to true. | true
 mixAuditAnalyzerEnabled             | Sets whether the [experimental](../analyzers/index.html) Mix Audit Analyzer should be used. `enableExperimental` must be set to true. | true
 mixAuditPath                        | Sets the path to the mix_audit executable; only used if mix audit analyzer is enabled and experimental analyzers are enabled.  | &nbsp;
 bundleAuditAnalyzerEnabled          | Sets whether the [experimental](../analyzers/index.html) Bundle Audit Analyzer should be used. `enableExperimental` must be set to true. | true
@@ -140,15 +140,18 @@ pathToGo                            | The path to `go`.                         
 
 Advanced Configuration
 ====================
-The following properties can be configured in the plugin. However, they are less frequently changed. One exception
-may be the cvedUrl properties, which can be used to host a mirror of the NVD within an enterprise environment.
+The following properties can be configured in the plugin. However, they are less frequently changed.
 
-Property             | Description                                                              | Default Value
----------------------|--------------------------------------------------------------------------|------------------
-cveUrlModified       | URL for the modified CVE JSON data feed. When mirroring the NVD you must mirror the *.json.gz and the *.meta files. Optional if your custom cveUrlBase is just a domain name change.  | https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-modified.json.gz
-cveUrlBase           | Base URL for each year's CVE JSON data feed, the %d will be replaced with the year.                          | https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-%d.json.gz
-cveWaitTime          | The time in milliseconds to wait between downloads from the NVD.                                             | 4000
-cveStartYear         | The first year of NVD CVE data to download from the NVD.                                                     | 2002
+Property             | Description                                                                                                  | Default Value
+---------------------|--------------------------------------------------------------------------------------------------------------|------------------
+nvdApiKey            | The API Key to access the NVD API; obtained from https://nvd.nist.gov/developers/request-an-api-key          | &nbsp;
+nvdApiEndpoint       | The NVD API endpoint URL; setting this is uncommon.                                                          | https://services.nvd.nist.gov/rest/json/cves/2.0
+nvdMaxRetryCount     | The maximum number of retry requests for a single call to the NVD API.                                       | 10
+nvdApiDelay          | The number of milliseconds to wait between calls to the NVD API.                                             | 3500 with an NVD API Key or 8000 without an API Key
+nvdDatafeedUrl       | The URL for the NVD API Data feed that can be generated using https://github.com/jeremylong/Open-Vulnerability-Project/tree/main/vulnz#caching-the-nvd-cve-data - example value `https://internal.server/cache/nvdcve-{0}.json.gz` | &nbsp;
+nvdUser              | Credentials used for basic authentication for the NVD API Data feed.                                         | &nbsp;
+nvdPassword          | Credentials used for basic authentication for the NVD API Data feed.                                         | &nbsp;
+nvdValidForHours     | The number of hours to wait before checking for new updates from the NVD. The default is 4 hours.            | 4
 dataDirectory        | Data directory that is used to store the local copy of the NVD. This should generally not be changed.        | data
 databaseDriverName   | The name of the database driver. Example: org.h2.Driver.                                                     | &nbsp;
 databaseDriverPath   | The path to the database driver JAR file; only used if the driver is not in the class path.                  | &nbsp;
@@ -158,4 +161,4 @@ databasePassword     | The password used when connecting to the database.       
 hostedSuppressionsEnabled | Whether the hosted suppression file will be used.                                                       | true
 hostedSuppressionsUrl | The URL to a mirrored copy of the hosted suppressions file for internet-constrained environments            | https://jeremylong.github.io/DependencyCheck/suppressions/publishedSuppressions.xml
 hostedSuppressionsValidForHours | Sets the number of hours to wait before checking for new updates of the hosted suppressions file  | 2
-hostedSuppressionsForceUpdate | Sets whether the hosted suppressions file should update regardless of the `autoupdate` and validForHours settings | false 
+hostedSuppressionsForceUpdate | Sets whether the hosted suppressions file should update regardless of the `autoupdate` and validForHours settings | false

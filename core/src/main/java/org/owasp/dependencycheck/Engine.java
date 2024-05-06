@@ -18,8 +18,7 @@
 package org.owasp.dependencycheck;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.jcs.JCS;
+import org.apache.commons.jcs3.JCS;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.owasp.dependencycheck.analyzer.AnalysisPhase;
@@ -40,6 +39,7 @@ import org.owasp.dependencycheck.exception.NoDataException;
 import org.owasp.dependencycheck.exception.ReportException;
 import org.owasp.dependencycheck.exception.WriteLockException;
 import org.owasp.dependencycheck.reporting.ReportGenerator;
+import org.owasp.dependencycheck.utils.FileUtils;
 import org.owasp.dependencycheck.utils.Settings;
 import org.owasp.dependencycheck.utils.WriteLock;
 import org.slf4j.Logger;
@@ -86,6 +86,7 @@ import static org.owasp.dependencycheck.analyzer.AnalysisPhase.PRE_IDENTIFIER_AN
 import static org.owasp.dependencycheck.analyzer.AnalysisPhase.PRE_INFORMATION_COLLECTION;
 import org.owasp.dependencycheck.analyzer.DependencyBundlingAnalyzer;
 import org.owasp.dependencycheck.dependency.naming.Identifier;
+import org.owasp.dependencycheck.utils.Utils;
 
 /**
  * Scans files, directories, etc. for Dependencies. Analyzers are loaded and
@@ -189,6 +190,9 @@ public class Engine implements FileFilter, AutoCloseable {
         this.serviceClassLoader = serviceClassLoader;
         this.mode = mode;
         this.accessExternalSchema = System.getProperty("javax.xml.accessExternalSchema");
+
+        checkRuntimeVersion();
+
         initializeEngine();
     }
 
@@ -254,8 +258,8 @@ public class Engine implements FileFilter, AutoCloseable {
 
     /**
      * Adds a dependency. In some cases, when adding a virtual dependency, the
-     * method will identify if the virtual dependency was previously added and update
-     * the existing dependency rather then adding a duplicate.
+     * method will identify if the virtual dependency was previously added and
+     * update the existing dependency rather then adding a duplicate.
      *
      * @param dependency the dependency to add
      */
@@ -641,7 +645,7 @@ public class Engine implements FileFilter, AutoCloseable {
         LOGGER.info("\n\nDependency-Check is an open source tool performing a best effort analysis of 3rd party dependencies; false positives and "
                 + "false negatives may exist in the analysis performed by the tool. Use of the tool and the reporting provided constitutes "
                 + "acceptance for use in an AS IS condition, and there are NO warranties, implied or otherwise, with regard to the analysis "
-                + "or its use. Any use of the tool and the reporting provided is at the user’s risk. In no event shall the copyright holder "
+                + "or its use. Any use of the tool and the reporting provided is at the user's risk. In no event shall the copyright holder "
                 + "or OWASP be held liable for any damages whatsoever arising out of or in connection with the use of this tool, the analysis "
                 + "performed, or the resulting report.\n\n\n"
                 + "   About ODC: https://jeremylong.github.io/DependencyCheck/general/internals.html\n"
@@ -945,7 +949,7 @@ public class Engine implements FileFilter, AutoCloseable {
         try {
             final File cache = new File(settings.getDataDirectory(), "cache");
             if (cache.exists()) {
-                if (FileUtils.deleteQuietly(cache)) {
+                if (FileUtils.delete(cache)) {
                     LOGGER.info("Cache directory purged");
                 }
             }
@@ -955,7 +959,7 @@ public class Engine implements FileFilter, AutoCloseable {
         try {
             final File cache = new File(settings.getDataDirectory(), "oss_cache");
             if (cache.exists()) {
-                if (FileUtils.deleteQuietly(cache)) {
+                if (FileUtils.delete(cache)) {
                     LOGGER.info("OSS Cache directory purged");
                 }
             }
@@ -1183,7 +1187,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param applicationName the name of the application/project
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format (see {@link ReportGenerator.Format})
      * @throws ReportException thrown if there is an error generating the report
      * @deprecated use
      * {@link #writeReports(java.lang.String, java.io.File, java.lang.String, org.owasp.dependencycheck.exception.ExceptionCollection)}
@@ -1200,7 +1204,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param applicationName the name of the application/project
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format (see {@link ReportGenerator.Format})
      * @param exceptions a collection of exceptions that may have occurred
      * during the analysis
      * @throws ReportException thrown if there is an error generating the report
@@ -1219,7 +1223,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param version the Maven version
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format (see {@link ReportGenerator.Format})
      * @throws ReportException thrown if there is an error generating the report
      * @deprecated use
      * {@link #writeReports(String, String, String, String, File, String, ExceptionCollection)}
@@ -1241,7 +1245,7 @@ public class Engine implements FileFilter, AutoCloseable {
      * @param version the Maven version
      * @param outputDir the path to the output directory (can include the full
      * file name if the format is not ALL)
-     * @param format the report format (ALL, HTML, CSV, JSON, etc.)
+     * @param format the report format  (see {@link ReportGenerator.Format})
      * @param exceptions a collection of exceptions that may have occurred
      * during the analysis
      * @throws ReportException thrown if there is an error generating the report
@@ -1280,6 +1284,19 @@ public class Engine implements FileFilter, AutoCloseable {
             return count == left.size();
         }
         return false;
+    }
+
+    /**
+     * Checks that if Java 8 is being used, it is at least update 251. This is
+     * required as a new method was introduced that is used by Apache HTTP
+     * Client. See
+     * https://stackoverflow.com/questions/76226322/exception-in-thread-httpclient-dispatch-1-java-lang-nosuchmethoderror-javax-n#comment134427003_76226322
+     */
+    private void checkRuntimeVersion() {
+        if (Utils.getJavaVersion() == 8 && Utils.getJavaUpdateVersion() < 251) {
+            LOGGER.error("Non-supported Java Runtime: dependency-check requires at least Java 8 update 251 or higher.");
+            throw new RuntimeException("dependency-check requires Java 8 update 251 or higher");
+        }
     }
 
     /**

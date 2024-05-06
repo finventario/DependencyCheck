@@ -20,6 +20,7 @@ package org.owasp.dependencycheck.maven;
 import com.github.packageurl.MalformedPackageURLException;
 import com.github.packageurl.PackageURL.StandardTypes;
 import com.github.packageurl.PackageURL;
+import io.github.jeremylong.jcs3.slf4j.Slf4jAdapter;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.handler.DefaultArtifactHandler;
@@ -66,7 +67,6 @@ import org.owasp.dependencycheck.exception.DependencyNotFoundException;
 import org.owasp.dependencycheck.exception.ExceptionCollection;
 import org.owasp.dependencycheck.exception.ReportException;
 import org.owasp.dependencycheck.utils.Checksum;
-import org.owasp.dependencycheck.utils.CveUrlParser;
 import org.owasp.dependencycheck.utils.Filter;
 import org.owasp.dependencycheck.utils.Settings;
 import org.sonatype.plexus.components.sec.dispatcher.DefaultSecDispatcher;
@@ -77,7 +77,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -108,9 +107,6 @@ import org.owasp.dependencycheck.reporting.ReportGenerator;
 import org.owasp.dependencycheck.utils.SeverityUtil;
 import org.owasp.dependencycheck.xml.pom.Model;
 import org.owasp.dependencycheck.xml.pom.PomUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.spi.LocationAwareLogger;
 
 //CSOFF: FileLength
 /**
@@ -236,7 +232,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Deprecated
     private boolean failBuildOnAnyVulnerability = false;
     /**
-     * Sets whether auto-updating of the NVD CVE/CPE data is enabled. It is not
+     * Sets whether auto-updating of the NVD CVE data is enabled. It is not
      * recommended that this be turned to false. Default is true.
      */
     @SuppressWarnings("CanBeFinal")
@@ -293,9 +289,9 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Parameter(property = "dependency-check.virtualSnapshotsFromReactor", defaultValue = "true")
     private Boolean virtualSnapshotsFromReactor;
     /**
-     * The report format to be generated (HTML, XML, JUNIT, CSV, JSON, SARIF,
-     * JENKINS, ALL). Multiple formats can be selected using a comma delineated
-     * list.
+     * The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF,
+     * JENKINS, GITLAB, ALL). Multiple formats can be selected using a comma
+     * delineated list.
      */
     @SuppressWarnings("CanBeFinal")
     @Parameter(property = "format", defaultValue = "HTML", required = true)
@@ -308,9 +304,9 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Parameter(property = "prettyPrint")
     private Boolean prettyPrint;
     /**
-     * The report format to be generated (HTML, XML, JUNIT, CSV, JSON, SARIF,
-     * JENKINS, ALL). Multiple formats can be selected using a comma delineated
-     * list.
+     * The report format to be generated (HTML, XML, CSV, JSON, JUNIT, SARIF,
+     * JENKINS, GITLAB, ALL). Multiple formats can be selected using a comma
+     * delineated list.
      */
     @Parameter(property = "formats", required = true)
     private String[] formats;
@@ -371,7 +367,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Parameter(property = "suppressionFileUser")
     private String suppressionFileUser;
     /**
-     * The password used when connecting to the suppressionFiles.
+     * The password used when connecting to the suppressionFiles. The `suppressionFileServerId` should be used instead otherwise maven debug logging could expose the password.
      */
     @Parameter(property = "suppressionFilePassword")
     private String suppressionFilePassword;
@@ -567,7 +563,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Parameter(property = "retireJsUser")
     private String retireJsUser;
     /**
-     * The password to authenticate to the CVE-URL.
+     * The password to authenticate to the CVE-URL. The `retireJsUrlServerId` should be used instead otherwise maven debug logging could expose the password.
      */
     @Parameter(property = "retireJsPassword")
     private String retireJsPassword;
@@ -615,7 +611,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @SuppressWarnings("CanBeFinal")
     @Parameter(property = "libmanAnalyzerEnabled")
     private Boolean libmanAnalyzerEnabled;
-    
+
     /**
      * Whether or not the Central Analyzer is enabled.
      */
@@ -764,6 +760,13 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     private Boolean cocoapodsAnalyzerEnabled;
 
     /**
+     * Whether or not the Carthage Analyzer is enabled.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "carthageAnalyzerEnabled")
+    private Boolean carthageAnalyzerEnabled;
+
+    /**
      * Whether or not the Swift package Analyzer is enabled.
      */
     @SuppressWarnings("CanBeFinal")
@@ -817,13 +820,6 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Parameter(property = "databaseDriverPath")
     private String databaseDriverPath;
     /**
-     * The server id in the settings.xml; used to retrieve encrypted passwords
-     * from the settings.xml.
-     */
-    @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "serverId")
-    private String serverId;
-    /**
      * A reference to the settings.xml settings.
      */
     @SuppressWarnings("CanBeFinal")
@@ -840,7 +836,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @Parameter(property = "databaseUser")
     private String databaseUser;
     /**
-     * The password to use when connecting to the database.
+     * The password to use when connecting to the database. The `serverId` should be used instead otherwise maven debug logging could expose the password.
      */
     @Parameter(property = "databasePassword")
     private String databasePassword;
@@ -912,56 +908,89 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @SuppressWarnings("CanBeFinal")
     @Parameter(property = "dbFilename")
     private String dbFilename;
-
-    /**
-     * Data Mirror URL for CVE 1.2.
-     */
-    @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "cveUrlModified")
-    private String cveUrlModified;
-    /**
-     * Base Data Mirror URL for CVE 1.2.
-     */
-    @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "cveUrlBase")
-    private String cveUrlBase;
-    /**
-     * The wait timeout between downloading from the NVD.
-     */
-    @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "cveWaitTime")
-    private String cveWaitTime;
-    /**
-     * The username to use when connecting to the CVE-URL.
-     */
-    @Parameter(property = "cveUser")
-    private String cveUser;
-    /**
-     * The password to authenticate to the CVE-URL.
-     */
-    @Parameter(property = "cvePassword")
-    private String cvePassword;
     /**
      * The server id in the settings.xml; used to retrieve encrypted passwords
-     * from the settings.xml for cve-URLs.
+     * from the settings.xml. This is used for the database username and
+     * password.
      */
     @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "cveServerId")
-    private String cveServerId;
+    @Parameter(property = "serverId")
+    private String serverId;
     /**
-     * Optionally skip excessive CVE update checks for a designated duration in
-     * hours.
+     * The NVD API Key. The parameters {@link #nvdApiKeyEnvironmentVariable} or {@link #nvdApiServerId} should be used instead otherwise 
+     * Maven debug logging could expose the API Key (see <a href="https://github.com/advisories/GHSA-qqhq-8r2c-c3f5">GHSA-qqhq-8r2c-c3f5</a>).
+     * This takes precedence over {@link #nvdApiServerId} and {@link #nvdApiKeyEnvironmentVariable}.
      */
     @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "cveValidForHours")
-    private Integer cveValidForHours;
+    @Parameter(property = "nvdApiKey")
+    private String nvdApiKey;
+    /**
+     * The maximum number of retry requests for a single call to the NVD API.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdMaxRetryCount")
+    private Integer nvdMaxRetryCount;
+    /**
+     * The server id in the settings.xml; used to retrieve encrypted API Key
+     * from the settings.xml for the NVD API Key. Note that the password is used
+     * as the API Key.
+     * Is potentially overwritten by {@link #nvdApiKeyEnvironmentVariable} or {@link #nvdApiKey}.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdApiServerId")
+    private String nvdApiServerId;
+    /**
+     * The environment variable from which to retrieve the API key for the NVD API.
+     * Takes precedence over {@link #nvdApiServerId} but is potentially overwritten by {@link #nvdApiKey}.
+     * This is the recommended option to pass the API key in CI builds.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdApiKeyEnvironmentVariable")
+    private String nvdApiKeyEnvironmentVariable;
+    /**
+     * The number of hours to wait before checking for new updates from the NVD.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdValidForHours")
+    private Integer nvdValidForHours;
+    /**
+     * The NVD API Endpoint; setting this is uncommon.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdApiEndpoint")
+    private String nvdApiEndpoint;
+    /**
+     * The NVD API Data Feed URL.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdDatafeedUrl")
+    private String nvdDatafeedUrl;
 
     /**
-     * Specify the first year of NVD CVE data to download; default is 2002.
+     * The server id in the settings.xml; used to retrieve encrypted passwords
+     * from the settings.xml for the NVD Data Feed.
      */
     @SuppressWarnings("CanBeFinal")
-    @Parameter(property = "cveStartYear")
-    private Integer cveStartYear;
+    @Parameter(property = "nvdDatafeedServerId")
+    private String nvdDatafeedServerId;
+    /**
+     * The username for basic auth to the NVD Data Feed.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdUser")
+    private String nvdUser;
+    /**
+     * The password for basic auth to the NVD Data Feed.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdPassword")
+    private String nvdPassword;
+    /**
+     * The time in milliseconds to wait between downloading NVD API data.
+     */
+    @SuppressWarnings("CanBeFinal")
+    @Parameter(property = "nvdApiDelay")
+    private Integer nvdApiDelay;
 
     /**
      * The path to dotnet core.
@@ -1061,10 +1090,12 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     @SuppressWarnings("CanBeFinal")
     @Parameter(property = "odc.dependencies.scan", defaultValue = "true", required = false)
     private boolean scanDependencies = true;
-
+    /**
+     * The proxy configuration.
+     */
     @Parameter
     private ProxyConfig proxy;
-    
+
     // </editor-fold>
     //<editor-fold defaultstate="collapsed" desc="Base Maven implementation">
     /**
@@ -1916,7 +1947,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
      * fail the build
      */
     protected void runCheck() throws MojoExecutionException, MojoFailureException {
-        muteJCS();
+        muteNoisyLoggers();
         try (Engine engine = initializeEngine()) {
             ExceptionCollection exCol = null;
             if (scanDependencies) {
@@ -2125,6 +2156,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         return new Engine(settings);
     }
 
+    //CSOFF: MethodLength
     /**
      * Takes the properties supplied and updates the dependency-check settings.
      * Additionally, this sets the system properties required to change the
@@ -2166,6 +2198,23 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         // use global maven proxy if provided
         final Proxy mavenProxy = getMavenProxy();
         if (mavenProxy != null) {
+            final String existing = System.getProperty("https.proxyHost");
+            if (existing == null && mavenProxy.getHost() != null && !mavenProxy.getHost().isEmpty()) {
+                System.setProperty("https.proxyHost", mavenProxy.getHost());
+                if (mavenProxy.getPort() > 0) {
+                    System.setProperty("https.proxyPort", String.valueOf(mavenProxy.getPort()));
+                }
+                if (mavenProxy.getUsername() != null && !mavenProxy.getUsername().isEmpty()) {
+                    System.setProperty("https.proxyUser", mavenProxy.getUsername());
+                }
+                if (mavenProxy.getPassword() != null && !mavenProxy.getPassword().isEmpty()) {
+                    System.setProperty("https.proxyPassword", mavenProxy.getPassword());
+                }
+                if (mavenProxy.getNonProxyHosts() != null && !mavenProxy.getNonProxyHosts().isEmpty()) {
+                    System.setProperty("http.nonProxyHosts", mavenProxy.getNonProxyHosts());
+                }
+            }
+
             settings.setString(Settings.KEYS.PROXY_SERVER, mavenProxy.getHost());
             settings.setString(Settings.KEYS.PROXY_PORT, Integer.toString(mavenProxy.getPort()));
             final String userName = mavenProxy.getUsername();
@@ -2183,9 +2232,8 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
             settings.setStringIfNotNull(Settings.KEYS.PROXY_USERNAME, userName);
             settings.setStringIfNotNull(Settings.KEYS.PROXY_PASSWORD, password);
             settings.setStringIfNotNull(Settings.KEYS.PROXY_NON_PROXY_HOSTS, mavenProxy.getNonProxyHosts());
-        }
-        // or use standard Java system properties
-        else if (System.getProperty("http.proxyHost") != null) {
+        } else if (System.getProperty("http.proxyHost") != null) {
+            //else use standard Java system properties
             settings.setString(Settings.KEYS.PROXY_SERVER, System.getProperty("http.proxyHost", ""));
             if (System.getProperty("http.proxyPort") != null) {
                 settings.setString(Settings.KEYS.PROXY_PORT, System.getProperty("http.proxyPort"));
@@ -2199,15 +2247,14 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
             if (System.getProperty("http.nonProxyHosts") != null) {
                 settings.setString(Settings.KEYS.PROXY_NON_PROXY_HOSTS, System.getProperty("http.nonProxyHosts"));
             }
-        }
-        // or use configured <proxy>
-        else if ( this.proxy != null && this.proxy.host != null) {
-            settings.setString(Settings.KEYS.PROXY_SERVER, this.proxy.host);
-            settings.setString(Settings.KEYS.PROXY_PORT, Integer.toString(this.proxy.port));
+        } else if (this.proxy != null && this.proxy.getHost() != null) {
+            // or use configured <proxy>
+            settings.setString(Settings.KEYS.PROXY_SERVER, this.proxy.getHost());
+            settings.setString(Settings.KEYS.PROXY_PORT, Integer.toString(this.proxy.getPort()));
             // user name and password from <server> entry settings.xml
-            configureServerCredentials(this.proxy.serverId, Settings.KEYS.PROXY_USERNAME, Settings.KEYS.PROXY_PASSWORD);
+            configureServerCredentials(this.proxy.getServerId(), Settings.KEYS.PROXY_USERNAME, Settings.KEYS.PROXY_PASSWORD);
         }
-        
+
         final String[] suppressions = determineSuppressions();
         settings.setArrayIfNotEmpty(Settings.KEYS.SUPPRESSION_FILE, suppressions);
         settings.setBooleanIfNotNull(Settings.KEYS.UPDATE_VERSION_CHECK_ENABLED, versionCheckEnabled);
@@ -2232,7 +2279,6 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         settings.setStringIfNotEmpty(Settings.KEYS.ANALYZER_ASSEMBLY_DOTNET_PATH, pathToCore);
         settings.setStringIfNotEmpty(Settings.KEYS.ANALYZER_NEXUS_URL, nexusUrl);
         configureServerCredentials(nexusServerId, Settings.KEYS.ANALYZER_NEXUS_USER, Settings.KEYS.ANALYZER_NEXUS_PASSWORD);
-
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_NEXUS_USES_PROXY, nexusUsesProxy);
         settings.setStringIfNotNull(Settings.KEYS.ANALYZER_ARTIFACTORY_URL, artifactoryAnalyzerUrl);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_ARTIFACTORY_USES_PROXY, artifactoryAnalyzerUseProxy);
@@ -2267,43 +2313,37 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_NODE_AUDIT_SKIPDEV, nodeAuditSkipDevDependencies);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_YARN_AUDIT_ENABLED, yarnAuditAnalyzerEnabled);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_PNPM_AUDIT_ENABLED, pnpmAuditAnalyzerEnabled);
-
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_ENABLED, retireJsAnalyzerEnabled);
         settings.setStringIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_URL, retireJsUrl);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_FORCEUPDATE, retireJsForceUpdate);
-
         if (retireJsUser == null && retireJsPassword == null && retireJsUrlServerId != null) {
             configureServerCredentials(retireJsUrlServerId, Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_USER, Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_PASSWORD);
         } else {
             settings.setStringIfNotEmpty(Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_USER, retireJsUser);
             settings.setStringIfNotEmpty(Settings.KEYS.ANALYZER_RETIREJS_REPO_JS_PASSWORD, retireJsPassword);
         }
-
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_MIX_AUDIT_ENABLED, mixAuditAnalyzerEnabled);
         settings.setStringIfNotNull(Settings.KEYS.ANALYZER_MIX_AUDIT_PATH, mixAuditPath);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_BUNDLE_AUDIT_ENABLED, bundleAuditAnalyzerEnabled);
         settings.setStringIfNotNull(Settings.KEYS.ANALYZER_BUNDLE_AUDIT_PATH, bundleAuditPath);
         settings.setStringIfNotNull(Settings.KEYS.ANALYZER_BUNDLE_AUDIT_WORKING_DIRECTORY, bundleAuditWorkingDirectory);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_COCOAPODS_ENABLED, cocoapodsAnalyzerEnabled);
+        settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_CARTHAGE_ENABLED, carthageAnalyzerEnabled);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_SWIFT_PACKAGE_MANAGER_ENABLED, swiftPackageManagerAnalyzerEnabled);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_SWIFT_PACKAGE_RESOLVED_ENABLED, swiftPackageResolvedAnalyzerEnabled);
-
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_OSSINDEX_ENABLED, ossindexAnalyzerEnabled);
         settings.setStringIfNotEmpty(Settings.KEYS.ANALYZER_OSSINDEX_URL, ossindexAnalyzerUrl);
         configureServerCredentials(ossIndexServerId, Settings.KEYS.ANALYZER_OSSINDEX_USER, Settings.KEYS.ANALYZER_OSSINDEX_PASSWORD);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_OSSINDEX_USE_CACHE, ossindexAnalyzerUseCache);
         settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_OSSINDEX_WARN_ONLY_ON_REMOTE_ERRORS, ossIndexWarnOnlyOnRemoteErrors);
-
         if (retirejs != null) {
             settings.setBooleanIfNotNull(Settings.KEYS.ANALYZER_RETIREJS_FILTER_NON_VULNERABLE, retirejs.getFilterNonVulnerable());
             settings.setArrayIfNotEmpty(Settings.KEYS.ANALYZER_RETIREJS_FILTERS, retirejs.getFilters());
         }
-
         //Database configuration
         settings.setStringIfNotEmpty(Settings.KEYS.DB_DRIVER_NAME, databaseDriverName);
         settings.setStringIfNotEmpty(Settings.KEYS.DB_DRIVER_PATH, databaseDriverPath);
         settings.setStringIfNotEmpty(Settings.KEYS.DB_CONNECTION_STRING, connectionString);
-
         if (databaseUser == null && databasePassword == null && serverId != null) {
             configureServerCredentials(serverId, Settings.KEYS.DB_USER, Settings.KEYS.DB_PASSWORD);
         } else {
@@ -2312,28 +2352,31 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         }
         settings.setStringIfNotEmpty(Settings.KEYS.DATA_DIRECTORY, dataDirectory);
         settings.setStringIfNotEmpty(Settings.KEYS.DB_FILE_NAME, dbFilename);
-
-        final String cveModifiedJson = Optional.ofNullable(cveUrlModified)
-                .filter(arg -> !arg.isEmpty())
-                .orElseGet(this::getDefaultCveUrlModified);
-        settings.setStringIfNotEmpty(Settings.KEYS.CVE_MODIFIED_JSON, cveModifiedJson);
-        settings.setStringIfNotEmpty(Settings.KEYS.CVE_BASE_JSON, cveUrlBase);
-        settings.setStringIfNotEmpty(Settings.KEYS.CVE_DOWNLOAD_WAIT_TIME, cveWaitTime);
-        settings.setIntIfNotNull(Settings.KEYS.CVE_CHECK_VALID_FOR_HOURS, cveValidForHours);
-        if (cveStartYear != null && cveStartYear < 2002) {
-            getLog().warn("Invalid configuration: cveStartYear must be 2002 or greater");
-            cveStartYear = 2002;
+        settings.setStringIfNotNull(Settings.KEYS.NVD_API_ENDPOINT, nvdApiEndpoint);
+        settings.setIntIfNotNull(Settings.KEYS.NVD_API_DELAY, nvdApiDelay);
+        settings.setStringIfNotEmpty(Settings.KEYS.NVD_API_DATAFEED_URL, nvdDatafeedUrl);
+        settings.setIntIfNotNull(Settings.KEYS.NVD_API_VALID_FOR_HOURS, nvdValidForHours);
+        settings.setIntIfNotNull(Settings.KEYS.NVD_API_MAX_RETRY_COUNT, nvdMaxRetryCount);
+        if (nvdApiKey == null) {
+            if (nvdApiKeyEnvironmentVariable != null) {
+                settings.setStringIfNotEmpty(Settings.KEYS.NVD_API_KEY, System.getenv(nvdApiKeyEnvironmentVariable));
+                getLog().debug("Using NVD API key from environment variable " + nvdApiKeyEnvironmentVariable);
+            } else if (nvdApiServerId != null) {
+                configureServerCredentialsApiKey(nvdApiServerId, Settings.KEYS.NVD_API_KEY);
+                getLog().debug("Using NVD API key from server's password with id " + nvdApiServerId + " in settings.xml");
+            }
+        } else {
+            settings.setStringIfNotEmpty(Settings.KEYS.NVD_API_KEY, nvdApiKey);
         }
-        settings.setIntIfNotNull(Settings.KEYS.CVE_START_YEAR, cveStartYear);
+        if (nvdUser == null && nvdPassword == null && nvdDatafeedServerId != null) {
+            configureServerCredentials(nvdDatafeedServerId, Settings.KEYS.NVD_API_DATAFEED_USER, Settings.KEYS.NVD_API_DATAFEED_PASSWORD);
+        } else {
+            settings.setStringIfNotEmpty(Settings.KEYS.NVD_API_DATAFEED_USER, nvdUser);
+            settings.setStringIfNotEmpty(Settings.KEYS.NVD_API_DATAFEED_PASSWORD, nvdPassword);
+        }
         settings.setBooleanIfNotNull(Settings.KEYS.PRETTY_PRINT, prettyPrint);
         artifactScopeExcluded = new ArtifactScopeExcluded(skipTestScope, skipProvidedScope, skipSystemScope, skipRuntimeScope);
         artifactTypeExcluded = new ArtifactTypeExcluded(skipArtifactType);
-        if (cveUser == null && cvePassword == null && cveServerId != null) {
-            configureServerCredentials(cveServerId, Settings.KEYS.CVE_USER, Settings.KEYS.CVE_PASSWORD);
-        } else {
-            settings.setStringIfNotEmpty(Settings.KEYS.CVE_USER, cveUser);
-            settings.setStringIfNotEmpty(Settings.KEYS.CVE_PASSWORD, cvePassword);
-        }
         if (suppressionFileUser == null && suppressionFilePassword == null && suppressionFileServerId != null) {
             configureServerCredentials(suppressionFileServerId, Settings.KEYS.SUPPRESSION_FILE_USER, Settings.KEYS.SUPPRESSION_FILE_PASSWORD);
         } else {
@@ -2345,6 +2388,7 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         settings.setBooleanIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_FORCEUPDATE, hostedSuppressionsForceUpdate);
         settings.setBooleanIfNotNull(Settings.KEYS.HOSTED_SUPPRESSIONS_ENABLED, hostedSuppressionsEnabled);
     }
+    //CSON: MethodLength
 
     /**
      * Retrieves the server credentials from the settings.xml, decrypts the
@@ -2368,6 +2412,31 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
                 }
                 settings.setStringIfNotEmpty(userSettingKey, username);
                 settings.setStringIfNotEmpty(passwordSettingKey, password);
+            } else {
+                getLog().error(String.format("Server '%s' not found in the settings.xml file", serverId));
+            }
+        }
+    }
+
+    /**
+     * Retrieves the server credentials from the settings.xml, decrypts the
+     * password, and places the values into the settings under the given key
+     * names. This is used to retrieve an encrypted password as an API key.
+     *
+     * @param serverId the server id
+     * @param apiKeySetting the property name for the API key
+     */
+    private void configureServerCredentialsApiKey(String serverId, String apiKeySetting) {
+        if (serverId != null) {
+            final Server server = settingsXml.getServer(serverId);
+            if (server != null) {
+                String password = null;
+                try {
+                    password = decryptPasswordFromSettings(server.getPassword());
+                } catch (SecDispatcherException ex) {
+                    password = handleSecDispatcherException("server", serverId, server.getPassword(), ex);
+                }
+                settings.setStringIfNotEmpty(apiKeySetting, password);
             } else {
                 getLog().error(String.format("Server '%s' not found in the settings.xml file", serverId));
             }
@@ -2453,33 +2522,19 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
     }
 
     /**
-     * Hacky method of muting the noisy logging from JCS. Implemented using a
-     * solution from SO: https://stackoverflow.com/a/50723801
+     * Hacky method of muting the noisy logging from JCS
      */
-    private void muteJCS() {
+    private void muteNoisyLoggers() {
+        System.setProperty("jcs.logSystem", "slf4j");
+        if (!getLog().isDebugEnabled()) {
+            Slf4jAdapter.muteLogging(true);
+        }
+
         final String[] noisyLoggers = {
-            "org.apache.commons.jcs.auxiliary.disk.AbstractDiskCache",
-            "org.apache.commons.jcs.engine.memory.AbstractMemoryCache",
-            "org.apache.commons.jcs.engine.control.CompositeCache",
-            "org.apache.commons.jcs.auxiliary.disk.indexed.IndexedDiskCache",
-            "org.apache.commons.jcs.engine.control.CompositeCache",
-            "org.apache.commons.jcs.engine.memory.AbstractMemoryCache",
-            "org.apache.commons.jcs.engine.control.event.ElementEventQueue",
-            "org.apache.commons.jcs.engine.memory.AbstractDoubleLinkedListMemoryCache",
-            "org.apache.commons.jcs.auxiliary.AuxiliaryCacheConfigurator",
-            "org.apache.commons.jcs.engine.control.CompositeCacheManager",
-            "org.apache.commons.jcs.utils.threadpool.ThreadPoolManager",
-            "org.apache.commons.jcs.engine.control.CompositeCacheConfigurator"};
+            "org.apache.hc"
+        };
         for (String loggerName : noisyLoggers) {
-            try {
-                //This is actually a MavenSimpleLogger, but due to various classloader issues, can't work with the directly.
-                final Logger l = LoggerFactory.getLogger(loggerName);
-                final Field f = l.getClass().getSuperclass().getDeclaredField("currentLogLevel");
-                f.setAccessible(true);
-                f.set(l, LocationAwareLogger.ERROR_INT);
-            } catch (IllegalAccessException | IllegalArgumentException | NoSuchFieldException | SecurityException e) {
-                getLog().debug("Failed to reset the log level of " + loggerName + ", it will continue being noisy.");
-            }
+            System.setProperty("org.slf4j.simpleLogger.log." + loggerName, "error");
         }
     }
 
@@ -2603,21 +2658,21 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         for (Dependency d : dependencies) {
             boolean addName = true;
             for (Vulnerability v : d.getVulnerabilities()) {
-                final float cvssV2 = v.getCvssV2() != null ? v.getCvssV2().getScore() : -1;
-                final float cvssV3 = v.getCvssV3() != null ? v.getCvssV3().getBaseScore() : -1;
-                final float unscoredCvss = v.getUnscoredSeverity() != null ? SeverityUtil.estimateCvssV2(v.getUnscoredSeverity()) : -1;
+                final Double cvssV2 = v.getCvssV2() != null && v.getCvssV2().getCvssData() != null && v.getCvssV2().getCvssData().getBaseScore() != null ? v.getCvssV2().getCvssData().getBaseScore() : -1;
+                final Double cvssV3 = v.getCvssV3() != null && v.getCvssV3().getCvssData() != null && v.getCvssV3().getCvssData().getBaseScore() != null ? v.getCvssV3().getCvssData().getBaseScore() : -1;
+                final Double unscoredCvss = v.getUnscoredSeverity() != null ? SeverityUtil.estimateCvssV2(v.getUnscoredSeverity()) : -1;
 
                 if (failBuildOnAnyVulnerability || cvssV2 >= failBuildOnCVSS
                         || cvssV3 >= failBuildOnCVSS
                         || unscoredCvss >= failBuildOnCVSS
                         //safety net to fail on any if for some reason the above misses on 0
-                        || (failBuildOnCVSS <= 0.0f)) {
+                        || (failBuildOnCVSS <= 0.0)) {
                     String name = v.getName();
-                    if (cvssV3 >= 0.0f) {
+                    if (cvssV3 >= 0.0) {
                         name += "(" + cvssV3 + ")";
-                    } else if (cvssV2 >= 0.0f) {
+                    } else if (cvssV2 >= 0.0) {
                         name += "(" + cvssV2 + ")";
-                    } else if (unscoredCvss >= 0.0f) {
+                    } else if (unscoredCvss >= 0.0) {
                         name += "(" + unscoredCvss + ")";
                     }
                     if (addName) {
@@ -2659,11 +2714,6 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         if (showSummary) {
             DependencyCheckScanAgent.showSummary(mp.getName(), dependencies);
         }
-    }
-
-    private String getDefaultCveUrlModified() {
-        return CveUrlParser.newInstance(getSettings())
-                .getDefaultCveUrlModified(cveUrlBase);
     }
 
     //</editor-fold>
@@ -2931,5 +2981,6 @@ public abstract class BaseDependencyCheckMojo extends AbstractMojo implements Ma
         }
         return exCol;
     }
+
 }
 //CSON: FileLength
